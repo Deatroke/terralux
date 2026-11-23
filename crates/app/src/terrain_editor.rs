@@ -50,7 +50,7 @@ impl App {
         theme::header(ui, "Editor de terreno");
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Escolha a forma da ilha e veja o mapa de cima. Nada vale até você aplicar.").color(theme::pal().dim));
+            ui.label(RichText::new("Escolha o tipo de relevo e veja o mapa de cima. Nada vale até você aplicar.").color(theme::pal().dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if theme::button(ui, "Aplicar terreno", true, true, vec2(150.0, 28.0)).clicked() {
                     close = Some(true);
@@ -78,14 +78,14 @@ impl App {
             let (rect, r) = ui.allocate_exact_size(vec2(side, side), egui::Sense::hover());
             // Enquadra na ilha: mostra só a região central do terreno.
             let procedural = matches!(def.source, terralux_core::TerrainSource::Procedural);
-            let view_half = if procedural { (def.island_radius * 2.3).min(def.half_size).max(20.0) } else { def.half_size };
+            let view_half = if procedural && def.kind.has_sea_edge() { (def.island_radius * 2.3).min(def.half_size).max(20.0) } else { def.half_size };
             let f = view_half / def.half_size;
             let uv = egui::Rect::from_min_max(egui::pos2(0.5 - f * 0.5, 0.5 - f * 0.5), egui::pos2(0.5 + f * 0.5, 0.5 + f * 0.5));
             if let Some((_, t)) = &self.map_tex {
                 ui.painter().image(t.id(), rect, uv, Color32::WHITE);
             }
             theme::bevel(ui.painter(), rect.expand(2.0), false, Color32::TRANSPARENT);
-            let rad = if procedural { def.island_radius } else { 0.0 };
+            let rad = if procedural && def.kind.has_sea_edge() { def.island_radius / view_half * side * 0.5 } else { 0.0 };
             let _unused = def.island_radius / (2.0 * view_half) * side;
             ui.painter().circle_stroke(rect.center(), rad, Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, 70)));
             ui.painter().text(rect.left_bottom() + vec2(8.0, -8.0), egui::Align2::LEFT_BOTTOM, format!("região de {:.0} × {:.0} m   ·   norte (+Z) para cima", view_half * 2.0, view_half * 2.0), egui::FontId::proportional(11.0), Color32::from_rgb(235, 240, 250));
@@ -105,6 +105,20 @@ impl App {
                         ui.end_row();
                     }
                     if procedural {
+                    ui.label("Tipo de relevo");
+                    egui::ComboBox::from_id_salt("tkind").selected_text(def.kind.name()).show_ui(ui, |ui| {
+                        for k in terralux_core::TerrainKind::ALL {
+                            ui.selectable_value(&mut def.kind, k, k.name());
+                        }
+                    });
+                    ui.end_row();
+                    ui.label("Cores");
+                    egui::ComboBox::from_id_salt("tbiome").selected_text(def.biome.name()).show_ui(ui, |ui| {
+                        for b in terralux_core::Biome::ALL {
+                            ui.selectable_value(&mut def.biome, b, b.name());
+                        }
+                    });
+                    ui.end_row();
                     ui.label("Semente");
                     ui.horizontal(|ui| {
                         ui.add(egui::DragValue::new(&mut def.seed));
@@ -114,14 +128,14 @@ impl App {
                         }
                     });
                     ui.end_row();
-                    ui.label("Raio da ilha");
-                    ui.add(egui::Slider::new(&mut def.island_radius, 10.0..=140.0).suffix(" m"));
+                    ui.label(def.kind.radius_label());
+                    ui.add(egui::Slider::new(&mut def.island_radius, 10.0..=200.0).suffix(" m"));
                     ui.end_row();
                     }
                     ui.label("Altura do pico");
-                    ui.add(egui::Slider::new(&mut def.peak_height, 2.0..=90.0).suffix(" m"));
+                    ui.add(egui::Slider::new(&mut def.peak_height, 2.0..=200.0).suffix(" m"));
                     ui.end_row();
-                    ui.label("Profundidade do mar");
+                    ui.label(if def.kind.has_sea_edge() { "Profundidade do mar" } else { "Profundidade do lago/rio" });
                     ui.add(egui::Slider::new(&mut def.sea_floor, 2.0..=40.0).suffix(" m"));
                     ui.end_row();
                     if procedural {
@@ -133,11 +147,11 @@ impl App {
                         ui.end_row();
                     }
                     ui.label("Tamanho do terreno");
-                    ui.add(egui::Slider::new(&mut def.half_size, 80.0..=600.0).suffix(" m (meia largura)"));
+                    ui.add(egui::Slider::new(&mut def.half_size, 80.0..=1000.0).suffix(" m (meia largura)"));
                     ui.end_row();
                     ui.label("Resolução final");
                     egui::ComboBox::from_id_salt("tres").selected_text(format!("{0} × {0}", def.resolution)).show_ui(ui, |ui| {
-                        for r in [512usize, 1024, 2048, 4096] {
+                        for r in [512usize, 513, 1024, 1025, 2048, 2049, 4096, 4097] {
                             ui.selectable_value(&mut def.resolution, r, format!("{r} × {r}"));
                         }
                     });

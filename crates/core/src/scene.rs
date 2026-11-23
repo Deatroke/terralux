@@ -43,6 +43,9 @@ pub struct Sky {
     /// Densidade da névoa de distância (1/m).
     pub haze: f32,
     pub clouds: Option<Clouds>,
+    /// Densidade de estrelas (0 = nenhuma). Só aparecem quando o céu está escuro.
+    #[serde(default)]
+    pub stars: f32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -65,10 +68,123 @@ pub enum TerrainSource {
     Image(String),
 }
 
+/// Tipo de relevo gerado (só vale para terreno procedural).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TerrainKind {
+    /// Ilha cercada de mar.
+    #[default]
+    Island,
+    /// Cordilheira de cristas afiadas, com um lago ao centro.
+    Mountains,
+    /// Colinas suaves e planícies (bom para terrenos de jogo).
+    Hills,
+    /// Mar de dunas.
+    Dunes,
+    /// Planalto em degraus cortado por um cânion.
+    Canyon,
+    /// Cone vulcânico com cratera, cercado de mar.
+    Volcano,
+}
+
+impl TerrainKind {
+    pub const ALL: [TerrainKind; 6] =
+        [TerrainKind::Island, TerrainKind::Mountains, TerrainKind::Hills, TerrainKind::Dunes, TerrainKind::Canyon, TerrainKind::Volcano];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            TerrainKind::Island => "Ilha",
+            TerrainKind::Mountains => "Montanhas",
+            TerrainKind::Hills => "Colinas e planícies",
+            TerrainKind::Dunes => "Dunas",
+            TerrainKind::Canyon => "Cânion",
+            TerrainKind::Volcano => "Vulcão",
+        }
+    }
+
+    /// Identificador estável para a linha de comando.
+    pub fn id(self) -> &'static str {
+        match self {
+            TerrainKind::Island => "island",
+            TerrainKind::Mountains => "mountains",
+            TerrainKind::Hills => "hills",
+            TerrainKind::Dunes => "dunes",
+            TerrainKind::Canyon => "canyon",
+            TerrainKind::Volcano => "volcano",
+        }
+    }
+
+    /// Nome do controle de "raio" para este relevo.
+    pub fn radius_label(self) -> &'static str {
+        match self {
+            TerrainKind::Island => "Raio da ilha",
+            TerrainKind::Mountains => "Raio do lago",
+            TerrainKind::Volcano => "Raio do vulcão",
+            TerrainKind::Canyon => "Largura do cânion",
+            TerrainKind::Hills | TerrainKind::Dunes => "Escala das formas",
+        }
+    }
+
+    /// O relevo termina em mar (a ilha e o vulcão) ou tem bordas de terra (os demais).
+    pub fn has_sea_edge(self) -> bool {
+        matches!(self, TerrainKind::Island | TerrainKind::Volcano)
+    }
+}
+
+/// Paleta de cores do terreno procedural.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Biome {
+    /// Rocha, grama e areia (a paleta original da ilha).
+    #[default]
+    Tropical,
+    /// Rocha cinza, grama baixa e neve nos cumes.
+    Alpine,
+    Desert,
+    Snow,
+    /// Rocha avermelhada em camadas.
+    RedRock,
+    /// Basalto escuro e cinza.
+    Volcanic,
+    Grassland,
+}
+
+impl Biome {
+    pub const ALL: [Biome; 7] = [Biome::Tropical, Biome::Alpine, Biome::Desert, Biome::Snow, Biome::RedRock, Biome::Volcanic, Biome::Grassland];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Biome::Tropical => "Tropical",
+            Biome::Alpine => "Alpino",
+            Biome::Desert => "Deserto",
+            Biome::Snow => "Neve",
+            Biome::RedRock => "Rocha vermelha",
+            Biome::Volcanic => "Vulcânico",
+            Biome::Grassland => "Pradaria",
+        }
+    }
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Biome::Tropical => "tropical",
+            Biome::Alpine => "alpine",
+            Biome::Desert => "desert",
+            Biome::Snow => "snow",
+            Biome::RedRock => "redrock",
+            Biome::Volcanic => "volcanic",
+            Biome::Grassland => "grassland",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TerrainDef {
     #[serde(default)]
     pub source: TerrainSource,
+    /// Tipo de relevo procedural.
+    #[serde(default)]
+    pub kind: TerrainKind,
+    /// Paleta de cores.
+    #[serde(default)]
+    pub biome: Biome,
     /// Meia largura do terreno quadrado (m).
     pub half_size: f32,
     /// Resolução da grade (n x n).
@@ -234,7 +350,8 @@ impl TerrainDef {
     /// Meia-largura da região que vale a pena mostrar (editor e wireframe).
     pub fn view_radius(&self) -> f32 {
         match self.source {
-            TerrainSource::Procedural => (self.island_radius * 1.9).min(self.half_size),
+            TerrainSource::Procedural if self.kind.has_sea_edge() => (self.island_radius * 1.9).min(self.half_size),
+            TerrainSource::Procedural => self.half_size,
             TerrainSource::Image(_) => self.half_size,
         }
     }
@@ -245,7 +362,7 @@ impl TerrainDef {
     }
 
     pub fn island() -> Self {
-        TerrainDef { source: TerrainSource::Procedural, texture: None, half_size: 220.0, resolution: 2048, seed: 11, peak_height: 21.0, sea_floor: 14.0, island_radius: 56.0, frequency: 0.022, octaves: 8 }
+        TerrainDef { source: TerrainSource::Procedural, kind: TerrainKind::Island, biome: Biome::Tropical, texture: None, half_size: 220.0, resolution: 2048, seed: 11, peak_height: 21.0, sea_floor: 14.0, island_radius: 56.0, frequency: 0.022, octaves: 8 }
     }
 }
 
@@ -307,6 +424,7 @@ impl Scene {
                 horizon: Vec3::new(0.78, 0.84, 0.92),
                 haze: 0.0011,
                 clouds: Some(Clouds { altitude: 700.0, coverage: 0.55, scale: 1.0, seed: 7 }),
+                stars: 0.0,
             },
             water: Some(Water {
                 level: 0.0,
@@ -317,6 +435,8 @@ impl Scene {
             }),
             terrain: Some(TerrainDef {
                 source: TerrainSource::Procedural,
+                kind: TerrainKind::Island,
+                biome: Biome::Tropical,
                 texture: None,
                 half_size: 220.0,
                 resolution: 2048,

@@ -1,6 +1,6 @@
 //! Céu procedural: gradiente atmosférico, sol, brilho e nuvens.
 use glam::{Vec2, Vec3};
-use terralux_core::noise::perlin2;
+use terralux_core::noise::{hash3, perlin2};
 use terralux_core::Scene;
 
 pub fn horizon_color(s: &Scene, dir: Vec3, sun: Vec3) -> Vec3 {
@@ -32,6 +32,9 @@ pub fn sky_color(s: &Scene, o: Vec3, d: Vec3, sun: Vec3, fast: bool) -> Vec3 {
     if cs > 0.99985 && d.y > -0.02 {
         col += s.sun.color * (s.sun.intensity * 22.0);
     }
+    if s.sky.stars > 0.0 && (d.y > -0.02 || (s.terrain.is_none() && s.water.is_none())) {
+        col += stars(s.sky.stars, d, col);
+    }
     if let Some(c) = &s.sky.clouds {
         if d.y > 0.012 {
             let t = (c.altitude - o.y) / d.y;
@@ -50,4 +53,33 @@ pub fn sky_color(s: &Scene, o: Vec3, d: Vec3, sun: Vec3, fast: bool) -> Vec3 {
         }
     }
     col
+}
+
+/// Campo de estrelas: células na esfera, uma estrela por célula sorteada, com brilho variável.
+/// Some quando o céu é claro (o fundo já ofusca as estrelas).
+fn stars(density: f32, d: Vec3, bg: Vec3) -> Vec3 {
+    let lum = bg.dot(Vec3::new(0.3, 0.59, 0.11));
+    let vis = (1.0 - lum * 6.0).clamp(0.0, 1.0);
+    if vis <= 0.0 {
+        return Vec3::ZERO;
+    }
+    let mut out = Vec3::ZERO;
+    // Duas camadas: estrelas miúdas e densas, e poucas maiores.
+    for (scale, thr, size, seed) in [(220.0f32, 0.10, 0.5f32, 17u32), (90.0, 0.035, 0.6, 91)] {
+        let p = d * scale;
+        let c = p.floor();
+        let (cx, cy, cz) = (c.x as i32, c.y as i32, c.z as i32);
+        let h = hash3(cx, cy, cz, seed);
+        if (h & 0xffff) as f32 / 65535.0 > thr * density.min(3.0) {
+            continue;
+        }
+        let j = |k: u32| (hash3(cx, cy, cz, seed ^ k) & 0xffff) as f32 / 65535.0;
+        let center = c + Vec3::new(0.2 + 0.6 * j(1), 0.2 + 0.6 * j(2), 0.2 + 0.6 * j(3));
+        let dist = (p - center).length() / size;
+        if dist < 1.0 {
+            let tint = Vec3::new(0.85 + 0.15 * j(4), 0.9, 1.0 - 0.2 * j(4));
+            out += tint * ((1.0 - dist).powi(2) * (0.35 + 1.4 * j(5) * j(5)));
+        }
+    }
+    out * vis
 }

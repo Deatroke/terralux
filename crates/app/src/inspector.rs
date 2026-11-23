@@ -254,6 +254,7 @@ impl App {
         if simple {
             egui::CollapsingHeader::new(RichText::new("Mais opções").strong().color(theme::pal().heading)).default_open(false).show(ui, |ui| {
                 slider(ui, "Névoa", &mut s.sky.haze, 0.0..=0.02);
+                slider(ui, "Estrelas", &mut s.sky.stars, 0.0..=3.0);
                 slider(ui, "Campo de visão", &mut s.camera.fov_deg, 15.0..=110.0);
                 slider(ui, "Exposição", &mut s.camera.exposure, 0.2..=3.0);
             });
@@ -263,6 +264,8 @@ impl App {
             color_row(ui, "Cor do horizonte", &mut s.sky.horizon);
             ui.label(RichText::new("Névoa").color(theme::pal().dim));
             slider_row(ui, &mut s.sky.haze, 0.0..=0.02, false);
+            ui.label(RichText::new("Estrelas (aparecem no céu escuro)").color(theme::pal().dim));
+            slider_row(ui, &mut s.sky.stars, 0.0..=3.0, false);
             theme::section_title(ui, "Câmera");
             slider(ui, "Campo de visão", &mut s.camera.fov_deg, 15.0..=110.0);
             slider(ui, "Exposição", &mut s.camera.exposure, 0.2..=3.0);

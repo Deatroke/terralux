@@ -12,7 +12,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use terralux_core::noise::{fbm2, perlin2, ridged2};
 use terralux_core::assets::Img;
-use terralux_core::{Heightfield, Mapping, Scene, Shape, TextureRef, Water};
+use terralux_core::terrain::smoothstep;
+use terralux_core::{Biome, Heightfield, Mapping, Scene, Shape, TextureRef, Water};
 
 pub struct RenderOptions {
     pub width: usize,
@@ -500,26 +501,92 @@ impl<'a> Renderer<'a> {
     }
 
     fn terrain_albedo(&self, p: Vec3, n: Vec3) -> Vec3 {
+        let (biome, peak) = self.scene.terrain.as_ref().map_or((Biome::Tropical, 21.0), |t| (t.biome, t.peak_height.max(1.0)));
         let q = Vec2::new(p.x, p.z);
         let slope = 1.0 - n.y;
         let rockn = fbm2(q * 0.35, 4, 2.0, 0.5, 3) * 0.5 + 0.5;
         let fine = perlin2(q * 2.3, 9) * 0.5 + 0.5;
         let strata = (perlin2(Vec2::new(q.x * 0.04 + q.y * 0.03, p.y * 0.9), 21) * 0.5 + 0.5) * 0.35;
-        let rock_a = Vec3::new(0.34, 0.29, 0.25);
-        let rock_b = Vec3::new(0.52, 0.44, 0.35);
-        let mut c = rock_a.lerp(rock_b, (rockn * 0.7 + strata + fine * 0.25).clamp(0.0, 1.0));
-        // Grama em declives suaves acima da areia.
-        let grass = Vec3::new(0.20, 0.30, 0.10).lerp(Vec3::new(0.30, 0.38, 0.12), fine);
-        let gmask = ((0.28 - slope) / 0.2).clamp(0.0, 1.0) * ((p.y - 1.0) / 3.0).clamp(0.0, 1.0)
-            * (1.0 - ((p.y - 18.0) / 10.0).clamp(0.0, 1.0));
-        c = c.lerp(grass, gmask * 0.85);
-        // Areia na linha d'água e abaixo.
-        let sand = Vec3::new(0.76, 0.68, 0.50).lerp(Vec3::new(0.66, 0.58, 0.42), fine);
-        let smask = (1.0 - ((p.y - 1.4) / 2.2).clamp(0.0, 1.0)).clamp(0.0, 1.0) * (1.0 - (slope * 2.2).clamp(0.0, 1.0));
-        c = c.lerp(sand, smask);
-        // Neve em picos.
-        let snow = ((p.y - 29.0) / 5.0).clamp(0.0, 1.0) * (1.0 - (slope * 1.6).clamp(0.0, 1.0));
-        c.lerp(Vec3::splat(0.9), snow)
+        let c3 = |r: f32, g: f32, b: f32| Vec3::new(r, g, b);
+        match biome {
+            Biome::Tropical => {
+                let rock_a = c3(0.34, 0.29, 0.25);
+                let rock_b = c3(0.52, 0.44, 0.35);
+                let mut c = rock_a.lerp(rock_b, (rockn * 0.7 + strata + fine * 0.25).clamp(0.0, 1.0));
+                // Grama em declives suaves acima da areia.
+                let grass = c3(0.20, 0.30, 0.10).lerp(c3(0.30, 0.38, 0.12), fine);
+                let gmask = ((0.28 - slope) / 0.2).clamp(0.0, 1.0) * ((p.y - 1.0) / 3.0).clamp(0.0, 1.0)
+                    * (1.0 - ((p.y - 18.0) / 10.0).clamp(0.0, 1.0));
+                c = c.lerp(grass, gmask * 0.85);
+                // Areia na linha d'água e abaixo.
+                let sand = c3(0.76, 0.68, 0.50).lerp(c3(0.66, 0.58, 0.42), fine);
+                let smask = (1.0 - ((p.y - 1.4) / 2.2).clamp(0.0, 1.0)).clamp(0.0, 1.0) * (1.0 - (slope * 2.2).clamp(0.0, 1.0));
+                c = c.lerp(sand, smask);
+                // Neve em picos.
+                let snow = ((p.y - 29.0) / 5.0).clamp(0.0, 1.0) * (1.0 - (slope * 1.6).clamp(0.0, 1.0));
+                c.lerp(Vec3::splat(0.9), snow)
+            }
+            Biome::Alpine => {
+                let rock = c3(0.30, 0.29, 0.28).lerp(c3(0.50, 0.48, 0.45), (rockn * 0.7 + strata + fine * 0.2).clamp(0.0, 1.0));
+                let grass = c3(0.16, 0.26, 0.09).lerp(c3(0.26, 0.36, 0.12), fine);
+                let low = 1.0 - ((p.y - peak * 0.22) / (peak * 0.22)).clamp(0.0, 1.0);
+                let gmask = ((0.30 - slope) / 0.2).clamp(0.0, 1.0) * low.max(0.0) * ((p.y + 0.5) / 2.0).clamp(0.0, 1.0);
+                let mut c = rock.lerp(grass, gmask * 0.9);
+                // Margem de terra úmida perto da água.
+                let shore = (1.0 - ((p.y - 0.2) / 1.6).clamp(0.0, 1.0)) * (1.0 - (slope * 2.0).clamp(0.0, 1.0));
+                c = c.lerp(c3(0.30, 0.25, 0.18), shore);
+                let snow = ((p.y - peak * 0.58) / (peak * 0.14)).clamp(0.0, 1.0) * (1.0 - (slope * 1.4 - 0.1).clamp(0.0, 1.0));
+                c.lerp(c3(0.93, 0.95, 0.98), snow)
+            }
+            Biome::Desert => {
+                let sand_a = c3(0.78, 0.56, 0.30);
+                let sand_b = c3(0.62, 0.40, 0.21);
+                let ripple = perlin2(Vec2::new(q.x * 0.9 + q.y * 0.6, q.y * 0.5 - q.x * 0.3), 33) * 0.5 + 0.5;
+                let mut c = sand_a.lerp(sand_b, (rockn * 0.55 + ripple * 0.25 + strata * 0.5).clamp(0.0, 1.0));
+                // Sotavento das dunas fica mais escuro e avermelhado.
+                c *= 1.0 - (slope * 0.9).clamp(0.0, 0.35);
+                let rock = c3(0.46, 0.30, 0.22).lerp(c3(0.58, 0.40, 0.28), fine);
+                c.lerp(rock, ((slope - 0.45) / 0.3).clamp(0.0, 1.0))
+            }
+            Biome::Snow => {
+                let snow = c3(0.93, 0.95, 1.0).lerp(c3(0.80, 0.86, 0.96), (fine * 0.5 + rockn * 0.4).clamp(0.0, 1.0));
+                let rock = c3(0.30, 0.29, 0.30).lerp(c3(0.46, 0.44, 0.43), rockn);
+                let bare = ((slope - 0.38) / 0.28).clamp(0.0, 1.0);
+                snow.lerp(rock, bare)
+            }
+            Biome::RedRock => {
+                // Faixas de rocha sedimentar: a cor muda com a altura.
+                let band = (p.y * 0.42 + perlin2(q * 0.02, 5) * 1.3 + fine * 0.15).rem_euclid(1.0);
+                let pal = [c3(0.62, 0.28, 0.15), c3(0.77, 0.46, 0.26), c3(0.50, 0.21, 0.13), c3(0.82, 0.62, 0.42), c3(0.66, 0.34, 0.20)];
+                let k = band * pal.len() as f32;
+                let i = (k as usize).min(pal.len() - 1);
+                let mut c = pal[i].lerp(pal[(i + 1) % pal.len()], smoothstep(0.7, 1.0, k - i as f32));
+                c *= 0.85 + 0.25 * rockn;
+                // Poeira e areia nos patamares planos e no fundo do vale.
+                let dust = c3(0.82, 0.58, 0.38);
+                c.lerp(dust, ((0.16 - slope) / 0.14).clamp(0.0, 1.0) * 0.8)
+            }
+            Biome::Volcanic => {
+                let basalt = c3(0.045, 0.042, 0.045).lerp(c3(0.17, 0.15, 0.14), (rockn * 0.7 + fine * 0.3).clamp(0.0, 1.0));
+                let ash = c3(0.30, 0.28, 0.27);
+                let mut c = basalt.lerp(ash, ((0.2 - slope) / 0.18).clamp(0.0, 1.0) * 0.7);
+                // Brasas nas rachaduras perto da cratera.
+                let crack = (1.0 - perlin2(q * 0.5, 12).abs() * 4.0).clamp(0.0, 1.0);
+                let hot = ((p.y - peak * 0.72) / (peak * 0.15)).clamp(0.0, 1.0);
+                c += c3(0.55, 0.12, 0.02) * (crack * crack * hot * 1.2);
+                let sand = c3(0.14, 0.13, 0.12);
+                c.lerp(sand, (1.0 - ((p.y - 1.0) / 2.0).clamp(0.0, 1.0)) * 0.9)
+            }
+            Biome::Grassland => {
+                let grass = c3(0.18, 0.32, 0.09).lerp(c3(0.34, 0.45, 0.14), (fine * 0.6 + rockn * 0.4).clamp(0.0, 1.0));
+                let patch = c3(0.40, 0.33, 0.16);
+                let mut c = grass.lerp(patch, (rockn * rockn * 0.35).clamp(0.0, 0.35));
+                let dirt = c3(0.36, 0.28, 0.20).lerp(c3(0.46, 0.38, 0.28), fine);
+                c = c.lerp(dirt, ((slope - 0.22) / 0.25).clamp(0.0, 1.0));
+                let sand = c3(0.72, 0.65, 0.46);
+                c.lerp(sand, (1.0 - ((p.y - 0.4) / 1.4).clamp(0.0, 1.0)) * (1.0 - (slope * 2.0).clamp(0.0, 1.0)))
+            }
+        }
     }
 
     fn shade_surface(&self, albedo: Vec3, n: Vec3, p: Vec3, spec: f32, shin: f32, view: Vec3) -> Vec3 {

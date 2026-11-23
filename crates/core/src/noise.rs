@@ -15,7 +15,7 @@ fn hash2(x: i32, y: i32, seed: u32) -> u32 {
 }
 
 #[inline]
-fn hash3(x: i32, y: i32, z: i32, seed: u32) -> u32 {
+pub fn hash3(x: i32, y: i32, z: i32, seed: u32) -> u32 {
     hash2(x.wrapping_add(hash2(z, 7, seed) as i32), y, seed ^ 0x51ed_270b)
 }
 
