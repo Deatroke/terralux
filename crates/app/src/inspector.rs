@@ -26,10 +26,31 @@ fn color_row(ui: &mut Ui, label: &str, v: &mut Vec3) {
     });
 }
 
+/// Slider com a caixa de valor de largura FIXA ao lado. A largura do slider é calculada a partir do que
+/// sobra na linha, então o conteúdo nunca pede mais do que o painel tem (sem crescer sozinho).
+fn slider_row(ui: &mut Ui, v: &mut f32, r: RangeInclusive<f32>, log: bool) {
+    const BOX: f32 = 58.0;
+    ui.horizontal(|ui| {
+        let w = (ui.available_width() - BOX - ui.spacing().item_spacing.x - 6.0).clamp(50.0, 360.0);
+        ui.spacing_mut().slider_width = w;
+        let mut s = egui::Slider::new(v, r.clone()).show_value(false).clamping(egui::SliderClamping::Always);
+        if log {
+            s = s.logarithmic(true);
+        }
+        ui.add(s);
+        let span = r.end() - r.start();
+        let dec = if span < 0.1 { 4 } else if span < 10.0 { 3 } else { 1 };
+        ui.allocate_ui_with_layout(vec2(BOX, 20.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.set_max_width(BOX);
+            ui.style_mut().spacing.interact_size.x = BOX;
+            ui.add(egui::DragValue::new(v).speed(span * if log { 0.0005 } else { 0.002 }).range(r).max_decimals(dec));
+        });
+    });
+}
+
 fn slider(ui: &mut Ui, label: &str, v: &mut f32, r: RangeInclusive<f32>) {
     ui.label(RichText::new(label).color(theme::pal().dim));
-    ui.spacing_mut().slider_width = (ui.available_width() - 72.0).max(60.0);
-    ui.add(egui::Slider::new(v, r));
+    slider_row(ui, v, r, false);
 }
 
 fn big_button(ui: &mut Ui, label: &str, primary: bool) -> bool {
@@ -38,7 +59,7 @@ fn big_button(ui: &mut Ui, label: &str, primary: bool) -> bool {
 
 impl App {
     pub fn inspector(&mut self, ui: &mut Ui) {
-        theme::sheen_after(egui::Panel::right("inspector").default_size(300.0).min_size(250.0).resizable(true).frame(theme::panel_frame().inner_margin(Margin::same(8))).show(ui, |ui| {
+        theme::sheen_after(egui::Panel::right("inspector").default_size(300.0).min_size(250.0).max_size(440.0).resizable(true).frame(theme::panel_frame().inner_margin(Margin::same(8))).show(ui, |ui| {
             ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
             let title = match self.sel {
                 Sel::None => "Nada selecionado".to_string(),
@@ -241,8 +262,7 @@ impl App {
             color_row(ui, "Cor do alto do céu", &mut s.sky.zenith);
             color_row(ui, "Cor do horizonte", &mut s.sky.horizon);
             ui.label(RichText::new("Névoa").color(theme::pal().dim));
-            ui.spacing_mut().slider_width = (ui.available_width() - 72.0).max(60.0);
-            ui.add(egui::Slider::new(&mut s.sky.haze, 0.0..=0.02).logarithmic(true).clamping(egui::SliderClamping::Always));
+            slider_row(ui, &mut s.sky.haze, 0.0..=0.02, false);
             theme::section_title(ui, "Câmera");
             slider(ui, "Campo de visão", &mut s.camera.fov_deg, 15.0..=110.0);
             slider(ui, "Exposição", &mut s.camera.exposure, 0.2..=3.0);
