@@ -436,11 +436,30 @@ fn write_stl(items: &[Item]) -> Vec<u8> {
     out
 }
 
+/// Exporta uma malha avulsa (conversão entre formatos), no tamanho original.
+pub fn export_mesh(mesh: &Mesh, path: &Path) -> Result<ExportReport, String> {
+    let item = Item { name: "malha".into(), t: Vec3::ZERO, q: Quat::IDENTITY, s: 1.0, prims: mesh_prims(mesh, &terralux_core::Material::matte(Vec3::splat(0.8))) };
+    write_items(vec![item], &Scene::empty(), path, &ExportOptions { include_camera: false, ..Default::default() })
+}
+
 /// Exporta a cena (ou só o terreno, conforme as opções). O formato vem da extensão:
 /// `.glb` (glTF binário), `.obj` (com `.mtl` ao lado) ou `.stl` (binário).
 pub fn export_scene(scene: &Scene, path: &Path, o: &ExportOptions) -> Result<ExportReport, String> {
+    let (items, rep) = build(scene, o);
+    let mut r = write_items(items, scene, path, o)?;
+    r.skipped = rep.skipped;
+    Ok(r)
+}
+
+fn write_items(items: Vec<Item>, scene: &Scene, path: &Path, o: &ExportOptions) -> Result<ExportReport, String> {
     let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-    let (items, mut rep) = build(scene, o);
+    let mut rep = ExportReport::default();
+    for it in &items {
+        for p in &it.prims {
+            rep.triangles += p.idx.len() / 3;
+            rep.vertices += p.pos.len();
+        }
+    }
     if items.is_empty() {
         return Err("nada para exportar (a cena não tem terreno nem objetos)".into());
     }

@@ -19,6 +19,9 @@ Importar mapa de altura (PNG), pincel, filtros (erosão, terraço); sistema de m
 ## M3 — GUI com preview em tempo real 🟡 (primeira versão pronta: `terralux-studio`)
 Janela com `winit`+`wgpu`+`egui`; viewport (wireframe/sólido), paletas ao estilo do original, desfazer/refazer, preview progressivo do ray tracer (CPU ou compute shader); edição de céu/água/terreno ao vivo.
 
+## M3.5 — Terrenos e cenas para jogo ✅ (v1.1)
+Tela inicial, atalhos estilo Blender, prévia leve, 17 modelos de cena (6 relevos, 7 biomas), importar/exportar glTF/OBJ/STL/PLY, mapa de altura de 16 bits e CLI para agentes (`docs/CLI.md`).
+
 ## M4 — Importar `.br3` (opcional)
 Só leitura de cenas do próprio usuário, a partir de arquivos de exemplo; formato documentado por observação. Fora do caminho crítico.
 
@@ -26,4 +29,4 @@ Só leitura de cenas do próprio usuário, a partir de arquivos de exemplo; form
 CI com Linux e Windows (MSVC), empacotamento (AppImage/zip/instalador), testes de render de referência.
 
 ## Depois
-Path tracing com GI, render em GPU, denoiser, animação por keyframes, DOF, exportação OBJ.
+Path tracing com GI, render em GPU, denoiser, animação por keyframes, DOF, edição de vértices, escultura de terreno com pincel.

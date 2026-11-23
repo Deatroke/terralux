@@ -60,6 +60,19 @@ cargo build --release
 ./target/release/terralux render scenes/ilha.ron --width 3840 --height 2160 --spp 16 -o ilha4k.png
 ```
 
+### Para jogos, engines e agentes
+
+```bash
+terralux templates                                   # cenários e terrenos prontos para jogo
+terralux new jogo-montanhas -o mapa.ron
+terralux set mapa.ron terrain.peak_height=90
+terralux export mapa.ron -o mapa.glb                 # Unity, Unreal, Godot, Blender (também .obj e .stl)
+terralux export-terrain mapa.ron -o altura.raw --size 1025   # mapa de altura de 16 bits
+terralux info mapa.ron --json                        # toda saída pode ser JSON
+```
+
+Contrato completo (JSON, códigos de saída, caminhos do `set`, formatos): [docs/CLI.md](docs/CLI.md).
+
 ## Como usar
 
 **Controles (estilo Blender)** — **F1** abre a cola completa dentro do programa.

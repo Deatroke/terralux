@@ -79,13 +79,18 @@ pub fn find_ci(dir: &Path, name: &str) -> Option<PathBuf> {
 
 /// Carrega um modelo (OBJ, DXF, STL, PLY, glTF ou GLB), já normalizado para meia-extensão 1.
 pub fn load_mesh(spec: &str) -> Result<crate::mesh::Mesh, String> {
+    let mut m = load_mesh_raw(spec)?;
+    m.normalize();
+    Ok(m)
+}
+
+/// Como `load_mesh`, mas mantém o tamanho e a posição originais do arquivo.
+pub fn load_mesh_raw(spec: &str) -> Result<crate::mesh::Mesh, String> {
     use crate::mesh::Mesh;
     let path = resolve(spec);
     let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     if ext == "gltf" || ext == "glb" {
-        let mut m = Mesh::from_gltf(&path)?;
-        m.normalize();
-        return Ok(m);
+        return Mesh::from_gltf(&path);
     }
     let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let text = String::from_utf8_lossy(&bytes);
@@ -100,7 +105,6 @@ pub fn load_mesh(spec: &str) -> Result<crate::mesh::Mesh, String> {
     if m.tris.is_empty() {
         return Err(format!("{}: nenhum triângulo", path.display()));
     }
-    m.normalize();
     Ok(m)
 }
 

@@ -76,4 +76,7 @@ Legenda: ✅ feito · 🟡 parcial · ⬜ pendente
 ## Arquivos
 - ✅ Cena nativa em RON (texto, versionável)
 - ⬜ Importação opcional de `.br3` (somente para abrir cenas próprias; ver ROADMAP M4)
-- ⬜ Exportar OBJ/DXF
+- ✅ Importar glTF/GLB, OBJ, STL, PLY, DXF; exportar GLB, OBJ + MTL, STL
+- ✅ Mapa de altura de 16 bits: importar e exportar (PNG, RAW)
+- ✅ CLI para agentes (`--json`, `set`, `add`, `export`, `convert`; ver docs/CLI.md)
+- ⬜ FBX e `.blend` (formatos fechados; use glTF)
