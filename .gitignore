@@ -1,0 +1,6 @@
+target/
+*.png
+!docs/*.png
+!docs/screenshots/*.png
+!crates/app/assets/**/*.png
+!packaging/**/*.png

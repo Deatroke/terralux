@@ -1,0 +1,43 @@
+(
+    camera: (
+        position: (-30.0, 7.0, -150.0),
+        target: (4.0, 20.0, 0.0),
+        fov_deg: 46.0,
+        exposure: 1.0,
+    ),
+    sun: (
+        azimuth_deg: 8.0,
+        elevation_deg: 9.0,
+        color: (1.0, 0.45, 0.28),
+        intensity: 2.2,
+    ),
+    sky: (
+        zenith: (0.10, 0.04, 0.38),
+        horizon: (1.0, 0.42, 0.50),
+        haze: 0.0004,
+        clouds: Some((
+            altitude: 700.0,
+            coverage: 0.55,
+            scale: 1.0,
+            seed: 7,
+        )),
+    ),
+    water: Some((
+        level: 0.0,
+        wave_height: 0.35,
+        wave_scale: 1.0,
+        absorption: (0.5, 0.11, 0.06),
+        deep_color: (0.005, 0.045, 0.1),
+    )),
+    terrain: Some((
+        half_size: 220.0,
+        resolution: 2048,
+        seed: 11,
+        peak_height: 21.0,
+        sea_floor: 14.0,
+        island_radius: 56.0,
+        frequency: 0.022,
+        octaves: 8,
+    )),
+    objects: [],
+)

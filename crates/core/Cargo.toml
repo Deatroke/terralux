@@ -1,0 +1,11 @@
+[package]
+name = "terralux-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+glam.workspace = true
+serde.workspace = true
+ron.workspace = true
+rayon.workspace = true
+image.workspace = true

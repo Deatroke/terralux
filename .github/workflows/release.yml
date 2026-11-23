@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag da release (ex.: v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            name: linux-x86_64
+            ext: tar.gz
+          - os: windows-latest
+            name: windows-x86_64
+            ext: zip
+    runs-on: ${{ matrix.os }}
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependências (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev libx11-dev
+
+      - name: Testes
+        run: cargo test --release --workspace
+
+      - name: Build
+        run: cargo build --release --workspace
+
+      - name: Empacotar (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          d="terralux-${TAG}-${{ matrix.name }}"
+          mkdir "$d"
+          cp target/release/terralux-studio target/release/terralux "$d"/
+          cp README.md "$d"/
+          mkdir -p "$d/packaging"
+          cp packaging/linux/terralux-studio.desktop packaging/linux/terralux.png "$d/packaging/"
+          cp crates/app/assets/aero/CREDITS.md "$d"/CREDITS-icones.md
+          tar czf "$d.tar.gz" "$d"
+          gh release upload "$TAG" "$d.tar.gz" --clobber
+
+      - name: Empacotar (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $d = "terralux-$env:TAG-${{ matrix.name }}"
+          New-Item -ItemType Directory $d | Out-Null
+          Copy-Item target/release/terralux-studio.exe, target/release/terralux.exe, README.md $d
+          Copy-Item crates/app/assets/aero/CREDITS.md "$d/CREDITS-icones.md"
+          Compress-Archive -Path $d -DestinationPath "$d.zip"
+          gh release upload "$env:TAG" "$d.zip" --clobber

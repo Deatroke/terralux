@@ -1,0 +1,57 @@
+(
+    camera: (
+        position: (-16.0, 8.0, -125.0),
+        target: (2.0, 17.0, 0.0),
+        fov_deg: 42.0,
+        exposure: 1.0,
+    ),
+    sun: (
+        azimuth_deg: -75.0,
+        elevation_deg: 23.0,
+        color: (1.0, 0.86, 0.68),
+        intensity: 2.2,
+    ),
+    sky: (
+        zenith: (0.1, 0.28, 0.7),
+        horizon: (0.78, 0.84, 0.92),
+        haze: 0.0011,
+        clouds: Some((
+            altitude: 700.0,
+            coverage: 0.55,
+            scale: 1.0,
+            seed: 7,
+        )),
+    ),
+    water: Some((
+        level: 0.0,
+        wave_height: 0.35,
+        wave_scale: 1.0,
+        absorption: (0.5, 0.11, 0.06),
+        deep_color: (0.005, 0.045, 0.1),
+    )),
+    terrain: Some((
+        half_size: 220.0,
+        resolution: 2048,
+        seed: 11,
+        peak_height: 21.0,
+        sea_floor: 14.0,
+        island_radius: 56.0,
+        frequency: 0.022,
+        octaves: 8,
+    )),
+    objects: [
+        (
+            name: "poliedro",
+            shape: Poly(Icosahedron),
+            position: (10.0, 40.0, -12.0),
+            rotation_deg: (20.0, 35.0, 12.0),
+            size: 4.5,
+            material: (
+                color: (1.0, 0.78, 0.36),
+                reflectivity: 0.75,
+                specular: 1.0,
+                shininess: 120.0,
+            ),
+        ),
+    ],
+)

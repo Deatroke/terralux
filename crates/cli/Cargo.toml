@@ -1,0 +1,12 @@
+[package]
+name = "terralux"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+terralux-core = { path = "../core" }
+terralux-render = { path = "../render" }
+glam.workspace = true
+image.workspace = true
+clap.workspace = true
+anyhow.workspace = true

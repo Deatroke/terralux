@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Terralux Studio
+Comment=Gerador de paisagens 3D procedurais
+Exec=terralux-studio
+Icon=terralux
+Categories=Graphics;3DGraphics;
+Terminal=false
