@@ -93,7 +93,7 @@ impl App {
         theme::sheen_after(egui::Panel::top("menu").frame(theme::panel_frame().inner_margin(Margin::symmetric(8, 3))).show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("Arquivo", |ui| {
-                    if ui.button("Nova cena (vazia)").clicked() {
+                    if ui.button("Nova cena (vazia)   Ctrl+N").clicked() {
                         self.load_scene(Scene::empty(), None);
                         ui.close();
                     }
@@ -109,12 +109,12 @@ impl App {
                         ui.close();
                         self.file_save(false);
                     }
-                    if ui.button("Salvar como…").clicked() {
+                    if ui.button("Salvar como…   Ctrl+Shift+S").clicked() {
                         ui.close();
                         self.file_save(true);
                     }
                     ui.separator();
-                    if ui.button("Renderizar imagem   F9").clicked() {
+                    if ui.button("Renderizar imagem   F12").clicked() {
                         ui.close();
                         self.start_render(&ctx);
                     }
@@ -134,15 +134,15 @@ impl App {
                     }
                     ui.separator();
                     let has_obj = matches!(self.sel, Sel::Object(_));
-                    if ui.add_enabled(has_obj, egui::Button::new("Duplicar objeto   Ctrl+D")).on_disabled_hover_text("Selecione um objeto na cena para duplicá-lo").clicked() {
+                    if ui.add_enabled(has_obj, egui::Button::new("Duplicar objeto   Shift+D")).on_disabled_hover_text("Selecione um objeto na cena para duplicá-lo").clicked() {
                         self.duplicate_selected();
                         ui.close();
                     }
-                    if ui.add_enabled(!matches!(self.sel, Sel::None | Sel::Sky), egui::Button::new("Excluir seleção   Del")).on_disabled_hover_text("Selecione um objeto, o terreno ou a água para excluir").clicked() {
+                    if ui.add_enabled(!matches!(self.sel, Sel::None | Sel::Sky), egui::Button::new("Excluir seleção   X")).on_disabled_hover_text("Selecione um objeto, o terreno ou a água para excluir").clicked() {
                         self.delete_selected();
                         ui.close();
                     }
-                    if ui.button("Desselecionar").clicked() {
+                    if ui.button("Desselecionar   Alt+A").clicked() {
                         self.sel = Sel::None;
                         ui.close();
                     }
@@ -182,6 +182,8 @@ impl App {
                     ui.selectable_value(&mut self.display, Display::Wire, "Wireframe");
                     ui.selectable_value(&mut self.display, Display::Both, "Ambos");
                     ui.separator();
+                    ui.checkbox(&mut self.show_side, "Coluna de vistas   T");
+                    ui.checkbox(&mut self.show_inspector, "Propriedades   N");
                     if ui.button("Biblioteca").clicked() {
                         self.drawer = !self.drawer;
                         ui.close();
@@ -198,11 +200,13 @@ impl App {
                         self.save_ui();
                         ui.close();
                     }
+                    if ui.button("Atalhos de teclado   F1").clicked() {
+                        self.help_open = true;
+                        ui.close();
+                    }
                     ui.separator();
-                    ui.label(RichText::new("Orbitar: botão direito (ou as setas no canto da cena)").color(theme::pal().dim));
-                    ui.label(RichText::new("Deslocar: botão do meio · Zoom: roda do mouse").color(theme::pal().dim));
-                    ui.label(RichText::new("Clique seleciona · arraste move, gira ou escala").color(theme::pal().dim));
-                    ui.label(RichText::new("Esc fecha a biblioteca · Del exclui · Ctrl+Z desfaz").color(theme::pal().dim));
+                    ui.label(RichText::new("Orbitar: botão do meio · Deslocar: Shift + meio · Zoom: roda").color(theme::pal().dim));
+                    ui.label(RichText::new("G mover · R girar · S escalar · Shift+A adicionar").color(theme::pal().dim));
                     ui.separator();
                     ui.label(RichText::new("Créditos dos ícones").strong());
                     ui.label(RichText::new("Esferas, cápsulas e ícones brancos: “AeroMedia: Frutiger Aero UI”,").color(theme::pal().dim));
@@ -369,9 +373,9 @@ impl App {
             ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
             // O bloco de render fica preso embaixo, para o botão principal nunca sair da tela.
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-                ui.label(RichText::new("Atalho: F9").small().color(theme::pal().dim));
+                ui.label(RichText::new("Atalho: F12").small().color(theme::pal().dim));
                 let r = theme::button(ui, "Renderizar cena", true, true, vec2(162.0, 40.0));
-                if self.tip(r, "Gera a imagem final no tamanho e na qualidade escolhidos (F9)").clicked() {
+                if self.tip(r, "Gera a imagem final no tamanho e na qualidade escolhidos (F12)").clicked() {
                     self.start_render(&ctx);
                 }
                 egui::ComboBox::from_id_salt("qual").width(162.0).selected_text(QUALITIES[self.quality_idx].0).show_ui(ui, |ui| {

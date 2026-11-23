@@ -62,7 +62,16 @@ cargo build --release
 
 ## Como usar
 
-**Controles**: orbitar com o botão direito (ou as setas no canto da cena) · deslocar com o botão do meio · zoom na roda · clique seleciona · duplo clique no terreno abre o editor · **F9** renderiza · **Esc** fecha a biblioteca · **Del** exclui · **Ctrl+Z** desfaz.
+**Controles (estilo Blender)** — **F1** abre a cola completa dentro do programa.
+
+| Ação | Atalho |
+|---|---|
+| Orbitar · deslocar · zoom | botão do meio · Shift + meio · roda ou Ctrl + meio (Alt + esquerdo no touchpad) |
+| Vistas | `1` frente · `3` direita · `7` topo (com Ctrl, o lado oposto) · `0` perspectiva · `.` enquadra a seleção · `Home` enquadra tudo |
+| Mover · girar · escalar | `G` · `R` · `S` — depois `X`/`Y`/`Z` fixa o eixo e dá para digitar o valor (`G` `X` `5` `Enter`); `Esc` ou botão direito cancela |
+| Adicionar · duplicar · excluir | `Shift+A` · `Shift+D` (duplica e move) · `X` ou `Delete` |
+| Janela | `N` propriedades · `T` vistas · `Z` alterna pré-visualização/wireframe · `Tab` modo Simples/Avançado |
+| Arquivo | `Ctrl+N` / `O` / `S` · `Ctrl+Shift+S` · `Ctrl+Z` / `Ctrl+Shift+Z` · `F12` renderiza |
 
 **Como a janela é organizada**:
 - **Paleta por abas** no alto: *Criar* (terreno, água, nuvens e a biblioteca), *Editar* (ferramentas, duplicar, excluir, desfazer) e *Céu* (quatro climas prontos).

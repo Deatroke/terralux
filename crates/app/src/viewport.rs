@@ -74,17 +74,38 @@ impl App {
                 orb.dist = (orb.dist * (-sc * 0.0015).exp()).clamp(2.0, 1500.0);
                 cam_changed = true;
             }
-            self.hint = "Orbitar: botão direito · Deslocar: botão do meio · Zoom: roda · Clique: selecionar · Duplo clique no terreno: editar".into();
+            self.hint = "Orbitar: botão do meio · Deslocar: Shift+meio · Zoom: roda ou Ctrl+meio · G/R/S mover, girar, escalar · Shift+A adicionar · F1 atalhos".into();
         }
         let d = resp.drag_delta();
         let basis = Basis::new(&self.scene.camera, rect);
-        if resp.dragged_by(PointerButton::Secondary) {
+        let mods = ui.input(|i| i.modifiers);
+        let modal = self.modal.is_some();
+        if modal {
+            // G/R/S em andamento: o mouse só alimenta a transformação.
+        } else if resp.dragged_by(PointerButton::Middle) {
+            // Como no Blender: meio orbita, Shift+meio desloca, Ctrl+meio dá zoom.
+            if mods.shift {
+                let k = orb.dist * 0.0016;
+                orb.target += (-basis.right * d.x + basis.up * d.y) * k;
+            } else if mods.command {
+                orb.dist = (orb.dist * (d.y * 0.01).exp()).clamp(2.0, 1500.0);
+            } else {
+                orb.yaw -= d.x * 0.006;
+                orb.pitch += d.y * 0.006;
+            }
+            cam_changed = true;
+        } else if resp.dragged_by(PointerButton::Secondary) {
             orb.yaw -= d.x * 0.006;
             orb.pitch += d.y * 0.006;
             cam_changed = true;
-        } else if resp.dragged_by(PointerButton::Middle) {
-            let k = orb.dist * 0.0016;
-            orb.target += (-basis.right * d.x + basis.up * d.y) * k;
+        } else if resp.dragged_by(PointerButton::Primary) && mods.alt {
+            if mods.shift {
+                let k = orb.dist * 0.0016;
+                orb.target += (-basis.right * d.x + basis.up * d.y) * k;
+            } else {
+                orb.yaw -= d.x * 0.006;
+                orb.pitch += d.y * 0.006;
+            }
             cam_changed = true;
         } else if resp.dragged_by(PointerButton::Primary) {
             match (self.tool, self.sel) {
@@ -119,7 +140,11 @@ impl App {
         if cam_changed {
             orb.apply(&mut self.scene.camera);
         }
-        if resp.clicked_by(PointerButton::Primary) || resp.double_clicked_by(PointerButton::Primary) {
+        let guarded = self.click_guard || modal;
+        if !ui.input(|i| i.pointer.any_down()) && !modal {
+            self.click_guard = false;
+        }
+        if !guarded && (resp.clicked_by(PointerButton::Primary) || resp.double_clicked_by(PointerButton::Primary)) {
             if let Some(p) = resp.interact_pointer_pos() {
                 let dir = basis.ray(p);
                 let hf = self.pick_heightfield();

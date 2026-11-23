@@ -1,3 +1,4 @@
+use crate::keymap::{self, Action, Axis, ModalInput, ModalKind, TransformIn};
 use crate::library::{Library, Tab, Thumbs};
 use crate::shell::Palette;
 use crate::theme;
@@ -68,6 +69,40 @@ pub struct Args {
     pub theme: Option<String>,
     /// Abre a janela de personalização (teste).
     pub theme_window: bool,
+    /// Abre a cola de atalhos (teste).
+    pub help: bool,
+    /// Teclas simuladas, uma por quadro (teste): "g,x,5,enter", "shift+d", "ctrl+z".
+    pub keys: Vec<(Key, Modifiers)>,
+}
+
+/// "shift+d", "x", "5", "enter", "esc", "period", "minus", "ctrl+z"…
+fn parse_key(t: &str) -> Option<(Key, Modifiers)> {
+    let mut m = Modifiers::NONE;
+    let mut name = t.trim();
+    while let Some((pre, rest)) = name.split_once('+') {
+        match pre {
+            "shift" => m.shift = true,
+            "ctrl" => {
+                m.ctrl = true;
+                m.command = true;
+            }
+            "alt" => m.alt = true,
+            _ => break,
+        }
+        name = rest;
+    }
+    let k = match name {
+        "enter" => Key::Enter,
+        "esc" => Key::Escape,
+        "period" => Key::Period,
+        "minus" => Key::Minus,
+        "tab" => Key::Tab,
+        "delete" => Key::Delete,
+        "home" => Key::Home,
+        n if n.len() == 1 => Key::from_name(&n.to_uppercase())?,
+        n => Key::from_name(n)?,
+    };
+    Some((k, m))
 }
 
 impl Args {
@@ -97,11 +132,25 @@ impl Args {
                 "--palette" => a.palette = it.next(),
                 "--theme" => a.theme = it.next(),
                 "--theme-window" => a.theme_window = true,
+                "--help-window" => a.help = true,
+                "--keys" => a.keys = it.next().map(|l| l.split(',').filter_map(parse_key).collect()).unwrap_or_default(),
                 other => a.scene = Some(other.into()),
             }
         }
         a
     }
+}
+
+/// G/R/S em andamento (estilo Blender): o estado original fica guardado para cancelar.
+pub struct Modal {
+    pub kind: ModalKind,
+    pub axis: Option<Axis>,
+    pub typed: String,
+    pub start: egui::Pos2,
+    pub snapshot: Scene,
+    pub sel: Sel,
+    pub base: Option<Object>,
+    pub water: Option<f32>,
 }
 
 struct Shot {
@@ -152,6 +201,15 @@ pub struct App {
     shot: Option<Shot>,
     start: std::time::Instant,
     pub auto_render: bool,
+    pub modal: Option<Modal>,
+    pub add_menu: Option<egui::Pos2>,
+    pub help_open: bool,
+    pub show_side: bool,
+    pub show_inspector: bool,
+    /// Depois de confirmar G/R/S com o mouse, ignora o clique até soltar o botão.
+    pub click_guard: bool,
+    script: Vec<(Key, Modifiers)>,
+    frames: u32,
 }
 
 impl App {
@@ -218,6 +276,14 @@ impl App {
             shot: args.shot.map(|(path, after)| Shot { path, after, requested: false, done: Arc::new(AtomicBool::new(false)) }),
             start: std::time::Instant::now(),
             auto_render: args.render,
+            modal: None,
+            add_menu: None,
+            help_open: args.help,
+            show_side: true,
+            show_inspector: true,
+            click_guard: false,
+            script: args.keys.into_iter().rev().collect(),
+            frames: 0,
         };
         app.load_ui();
         match args.mode.as_deref() {
@@ -320,6 +386,9 @@ impl App {
     }
 
     fn commit_history(&mut self, ctx: &Context) {
+        if self.modal.is_some() {
+            return;
+        }
         if self.scene != self.committed && !ctx.input(|i| i.pointer.any_down()) {
             self.undo.push(std::mem::replace(&mut self.committed, self.scene.clone()));
             if self.undo.len() > 100 {
@@ -473,41 +542,284 @@ impl App {
         }
     }
 
+    fn key_events(&mut self, ctx: &Context) -> Vec<(Key, Modifiers)> {
+        self.frames += 1;
+        let mut out = Vec::new();
+        if self.frames > 25 {
+            out.extend(self.script.pop());
+        }
+        if !self.script.is_empty() {
+            ctx.request_repaint();
+        }
+        out.extend(ctx.input(|i| {
+            i.events
+                .iter()
+                .filter_map(|e| match e {
+                    egui::Event::Key { key, pressed: true, repeat: false, modifiers, .. } => Some((*key, *modifiers)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        }));
+        out
+    }
+
     fn shortcuts(&mut self, ctx: &Context) {
-        let (redo, undo, save, open, del, render, dup) = ctx.input_mut(|i| {
-            (
-                i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) || i.consume_key(Modifiers::COMMAND, Key::Y),
-                i.consume_key(Modifiers::COMMAND, Key::Z),
-                i.consume_key(Modifiers::COMMAND, Key::S),
-                i.consume_key(Modifiers::COMMAND, Key::O),
-                i.consume_key(Modifiers::NONE, Key::Delete),
-                i.consume_key(Modifiers::NONE, Key::F9),
-                i.consume_key(Modifiers::COMMAND, Key::D),
-            )
-        });
+        let events = self.key_events(ctx);
+        if std::env::var("TERRALUX_DEBUG").is_ok() && !events.is_empty() {
+            eprintln!("KEYS {:?} modal={:?}", events.iter().map(|e| e.0).collect::<Vec<_>>(), self.modal.as_ref().map(|m| (m.kind, m.axis, m.typed.clone())));
+        }
+        if self.modal.is_some() {
+            self.modal_step(ctx, &events);
+            return;
+        }
         let typing = ctx.egui_wants_keyboard_input();
         if self.drawer && self.editor == Editor::Work && !typing && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
             self.drawer = false;
         }
-        if redo {
-            self.redo();
-        } else if undo {
-            self.undo();
+        if self.editor != Editor::Work && !events.iter().any(|(_, m)| m.command) {
+            return;
         }
-        if save {
-            self.file_save(false);
+        for (key, mods) in events {
+            let Some(action) = keymap::map_key(key, mods) else { continue };
+            // Digitando num campo, só os atalhos com Ctrl valem.
+            if typing && !mods.command {
+                continue;
+            }
+            if key == Key::Tab {
+                ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab));
+            }
+            self.do_action(action, ctx);
         }
-        if open {
-            self.file_open();
+    }
+
+    fn do_action(&mut self, a: Action, ctx: &Context) {
+        match a {
+            Action::Modal(k) => self.begin_modal(ctx, k),
+            Action::Delete => self.delete_selected(),
+            Action::Duplicate => self.duplicate_selected(),
+            Action::DuplicateGrab => {
+                if matches!(self.sel, Sel::Object(_)) {
+                    self.duplicate_selected();
+                    self.begin_modal(ctx, ModalKind::Grab);
+                }
+            }
+            Action::Deselect => self.sel = Sel::None,
+            Action::AddMenu => {
+                let c = self.view_rect.center();
+                self.add_menu = Some(ctx.input(|i| i.pointer.latest_pos()).filter(|p| self.view_rect.contains(*p)).unwrap_or(c));
+            }
+            Action::ToggleInspector => self.show_inspector = !self.show_inspector,
+            Action::ToggleSide => self.show_side = !self.show_side,
+            Action::ToggleMode => {
+                self.simple = !self.simple;
+                self.save_ui();
+            }
+            Action::CycleDisplay => {
+                self.display = match self.display {
+                    Display::Preview => Display::Wire,
+                    Display::Wire => Display::Both,
+                    Display::Both => Display::Preview,
+                }
+            }
+            Action::Render => self.start_render(ctx),
+            Action::New => self.load_scene(Scene::empty(), None),
+            Action::Open => self.file_open(),
+            Action::Save => self.file_save(false),
+            Action::SaveAs => self.file_save(true),
+            Action::Undo => self.undo(),
+            Action::Redo => self.redo(),
+            Action::View(yaw, pitch) => self.set_view(yaw, pitch),
+            Action::FrameSelected => self.frame_selected(),
+            Action::FrameAll => self.frame_all(),
+            Action::Help => self.help_open = !self.help_open,
         }
-        if dup && !typing {
-            self.duplicate_selected();
+    }
+
+    fn frame(&mut self, center: Vec3, dist: f32) {
+        let mut o = Orbit::from_camera(&self.scene.camera);
+        o.target = center;
+        o.dist = dist.clamp(2.0, 1500.0);
+        o.apply(&mut self.scene.camera);
+    }
+
+    pub fn frame_selected(&mut self) {
+        match self.sel {
+            Sel::Object(i) if i < self.scene.objects.len() => {
+                let o = &self.scene.objects[i];
+                let (c, d) = (o.position, (o.size * 3.6).max(6.0));
+                self.frame(c, d);
+            }
+            Sel::Terrain => self.frame_all(),
+            Sel::Water => {
+                let y = self.scene.water.as_ref().map_or(0.0, |w| w.level);
+                let t = self.scene.camera.target;
+                self.frame(Vec3::new(t.x, y, t.z), 120.0);
+            }
+            _ => self.frame_all(),
         }
-        if del && !typing {
-            self.delete_selected();
+    }
+
+    pub fn frame_all(&mut self) {
+        if let Some(t) = &self.scene.terrain {
+            let r = t.view_radius();
+            self.frame(Vec3::new(0.0, t.peak_height * 0.35, 0.0), r * 2.3);
+        } else if !self.scene.objects.is_empty() {
+            let n = self.scene.objects.len() as f32;
+            let c = self.scene.objects.iter().fold(Vec3::ZERO, |a, o| a + o.position) / n;
+            let r = self.scene.objects.iter().map(|o| (o.position - c).length() + o.size).fold(5.0, f32::max);
+            self.frame(c, r * 3.0);
         }
-        if render {
-            self.start_render(ctx);
+    }
+
+    pub fn begin_modal(&mut self, ctx: &Context, kind: ModalKind) {
+        let base = match self.sel {
+            Sel::Object(i) => self.scene.objects.get(i).cloned(),
+            _ => None,
+        };
+        let water = if self.sel == Sel::Water && kind == ModalKind::Grab { self.scene.water.as_ref().map(|w| w.level) } else { None };
+        if base.is_none() && water.is_none() {
+            self.info("Selecione um objeto na cena para mover, girar ou escalar (G, R, S). Na água, só o G (altura).".to_string());
+            return;
+        }
+        let start = ctx.input(|i| i.pointer.latest_pos()).unwrap_or(self.view_rect.center());
+        let axis = if water.is_some() { Some(Axis::Y) } else { None };
+        self.modal = Some(Modal { kind, axis, typed: String::new(), start, snapshot: self.scene.clone(), sel: self.sel, base, water });
+    }
+
+    fn modal_step(&mut self, ctx: &Context, events: &[(Key, Modifiers)]) {
+        let Some(m) = self.modal.as_mut() else { return };
+        let (mut confirm, mut cancel) = (false, false);
+        for (key, mods) in events {
+            if mods.command {
+                continue;
+            }
+            match keymap::modal_key(*key) {
+                Some(ModalInput::Axis(a)) if m.water.is_none() => m.axis = if m.axis == Some(a) { None } else { Some(a) },
+                Some(ModalInput::Char(c)) => keymap::push_char(&mut m.typed, c),
+                Some(ModalInput::Backspace) => {
+                    m.typed.pop();
+                }
+                Some(ModalInput::Confirm) => confirm = true,
+                Some(ModalInput::Cancel) => cancel = true,
+                _ => {}
+            }
+        }
+        let (lmb, rmb, pos) = ctx.input(|i| (i.pointer.primary_pressed(), i.pointer.secondary_pressed(), i.pointer.latest_pos()));
+        if lmb {
+            confirm = true;
+            self.click_guard = true;
+        }
+        cancel |= rmb;
+        let m = self.modal.as_mut().unwrap();
+        if cancel {
+            self.scene = m.snapshot.clone();
+            self.sel = m.sel;
+            self.modal = None;
+            self.click_guard = rmb;
+            return;
+        }
+        let basis = crate::view::Basis::new(&self.scene.camera, self.view_rect);
+        let cam = &self.scene.camera;
+        let ref_pos = m.base.as_ref().map(|o| o.position).unwrap_or(Vec3::new(cam.target.x, m.water.unwrap_or(0.0), cam.target.z));
+        let dist = (ref_pos - basis.pos).dot(basis.fwd).abs().max(1.0);
+        let m_per_px = 2.0 * (cam.fov_deg.to_radians() * 0.5).tan() * dist / self.view_rect.height().max(1.0);
+        let mouse = pos.map(|p| p - m.start).unwrap_or(egui::Vec2::ZERO);
+        let tin = TransformIn { kind: m.kind, axis: m.axis, typed: keymap::parse_typed(&m.typed), mouse, right: basis.right, up: basis.up, m_per_px };
+        let mut snapshot_obj = m.snapshot.clone();
+        match (m.sel, &m.base, m.water) {
+            (Sel::Object(i), Some(base), _) if i < snapshot_obj.objects.len() => {
+                snapshot_obj.objects[i] = keymap::transform(&tin, base);
+            }
+            (Sel::Water, _, Some(level)) => {
+                let mut fake = Object { name: String::new(), shape: Shape::Sphere, position: Vec3::new(0.0, level, 0.0), rotation_deg: Vec3::ZERO, size: 1.0, material: Material::matte(Vec3::ONE) };
+                fake = keymap::transform(&TransformIn { axis: Some(Axis::Y), ..tin }, &fake);
+                if let Some(w) = snapshot_obj.water.as_mut() {
+                    w.level = fake.position.y;
+                }
+            }
+            _ => {}
+        }
+        self.scene = snapshot_obj;
+        if confirm {
+            self.modal = None;
+        }
+        ctx.request_repaint();
+    }
+
+    fn add_menu_ui(&mut self, ctx: &Context) {
+        let Some(pos) = self.add_menu else { return };
+        let mut close = false;
+        let mut pick: Option<Box<dyn FnOnce(&mut App)>> = None;
+        let r = egui::Area::new(egui::Id::new("add_menu")).order(egui::Order::Foreground).fixed_pos(pos).show(ctx, |ui| {
+            theme::card(ui, |ui| {
+                ui.set_min_width(150.0);
+                ui.label(RichText::new("Adicionar").strong().color(theme::pal().heading));
+                let mut item = |ui: &mut Ui, name: &str, f: Box<dyn FnOnce(&mut App)>| {
+                    if ui.add(egui::Button::new(name).frame(false).min_size(egui::vec2(150.0, 0.0))).clicked() {
+                        pick = Some(f);
+                    }
+                };
+                item(ui, "Terreno", Box::new(|a| {
+                    a.scene.terrain.get_or_insert_with(TerrainDef::island);
+                    a.sel = Sel::Terrain;
+                }));
+                item(ui, "Água", Box::new(|a| {
+                    a.scene.water.get_or_insert_with(Water::sea);
+                    a.sel = Sel::Water;
+                }));
+                item(ui, "Plano infinito", Box::new(|a| {
+                    a.create_shape(Shape::Plane, "Plano", 1.0);
+                    if let Some(o) = a.scene.objects.last_mut() {
+                        o.position.y = 0.0;
+                    }
+                }));
+                ui.separator();
+                item(ui, "Esfera", Box::new(|a| a.create_shape(Shape::Sphere, "Esfera", 5.0)));
+                for p in Polyhedron::ALL {
+                    item(ui, p.name(), Box::new(move |a| a.create_shape(Shape::Poly(p), p.name(), 5.0)));
+                }
+                for p in terralux_core::mesh::Primitive::BASIC {
+                    item(ui, p.name(), Box::new(move |a| a.create_shape(Shape::Prim(p), p.name(), 5.0)));
+                }
+            });
+        });
+        let outside = ctx.input(|i| i.pointer.any_pressed()) && !r.response.contains_pointer();
+        if pick.is_some() || outside || ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
+            close = true;
+        }
+        if let Some(f) = pick {
+            f(self);
+        }
+        if close {
+            self.add_menu = None;
+        }
+    }
+
+    fn help_window(&mut self, ctx: &Context) {
+        if !self.help_open {
+            return;
+        }
+        let mut open = true;
+        let fill = theme::pal().navy.to_opaque();
+        let frame = egui::Frame::window(&ctx.global_style()).fill(fill);
+        egui::Window::new("Atalhos de teclado").open(&mut open).frame(frame).resizable(false).collapsible(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+            ui.label(RichText::new("Estilo Blender: o que você já sabe de lá vale aqui.").color(theme::pal().dim));
+            ui.columns(2, |cols| {
+                for (n, (title, rows)) in keymap::CHEATSHEET.iter().enumerate() {
+                    let ui = &mut cols[n % 2];
+                    theme::section_title(ui, title);
+                    egui::Grid::new(*title).num_columns(2).spacing([14.0, 3.0]).show(ui, |ui| {
+                        for (k, d) in rows.iter() {
+                            ui.label(RichText::new(*k).strong().color(theme::pal().accent));
+                            ui.label(*d);
+                            ui.end_row();
+                        }
+                    });
+                }
+            });
+        });
+        if !open {
+            self.help_open = false;
         }
     }
 
@@ -533,6 +845,12 @@ impl App {
         }
         if !s.requested && self.start.elapsed().as_secs_f32() > s.after {
             s.requested = true;
+            if std::env::var("TERRALUX_DEBUG").is_ok() {
+                for o in &self.scene.objects {
+                    eprintln!("OBJ {} pos={:?} rot={:?} size={}", o.name, o.position, o.rotation_deg, o.size);
+                }
+                eprintln!("MODAL {}", self.modal.is_some());
+            }
             let (path, done) = (s.path.clone(), s.done.clone());
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::ScreenshotCallback::new(move |img| {
                 let bytes: Vec<u8> = img.pixels.iter().flat_map(|p| [p.r(), p.g(), p.b()]).collect();
@@ -553,8 +871,11 @@ impl eframe::App for App {
             self.quality_idx = 1;
             self.start_render(&ctx);
         }
-        let shown = std::mem::take(&mut self.hint);
+        let mut shown = std::mem::take(&mut self.hint);
         self.shortcuts(&ctx);
+        if let Some(m) = &self.modal {
+            shown = keymap::modal_status(m.kind, m.axis, &m.typed);
+        }
         self.poll_preview(&ctx);
         let title = format!(
             "{}{} — Terralux Studio",
@@ -575,8 +896,12 @@ impl eframe::App for App {
             if self.drawer {
                 self.library_drawer(ui);
             }
-            self.side_panel(ui);
-            self.inspector(ui);
+            if self.show_side {
+                self.side_panel(ui);
+            }
+            if self.show_inspector {
+                self.inspector(ui);
+            }
         }
         egui::CentralPanel::default().frame(theme::panel_frame().inner_margin(5.0)).show(ui, |ui| match self.editor {
             Editor::Work => {
@@ -589,6 +914,8 @@ impl eframe::App for App {
             self.viewport_overlays(&ctx, self.view_rect);
         }
         self.final_window(&ctx);
+        self.add_menu_ui(&ctx);
+        self.help_window(&ctx);
         self.theme_window(&ctx);
         self.toast_ui(&ctx);
         self.commit_history(&ctx);
