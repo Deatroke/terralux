@@ -77,15 +77,22 @@ pub fn find_ci(dir: &Path, name: &str) -> Option<PathBuf> {
     std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).find(|p| p.file_name().is_some_and(|f| f.to_string_lossy().eq_ignore_ascii_case(name)))
 }
 
-/// Carrega um modelo (OBJ ou DXF), já normalizado para meia-extensão 1.
+/// Carrega um modelo (OBJ, DXF, STL, PLY, glTF ou GLB), já normalizado para meia-extensão 1.
 pub fn load_mesh(spec: &str) -> Result<crate::mesh::Mesh, String> {
     use crate::mesh::Mesh;
     let path = resolve(spec);
+    let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
+    if ext == "gltf" || ext == "glb" {
+        let mut m = Mesh::from_gltf(&path)?;
+        m.normalize();
+        return Ok(m);
+    }
     let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let text = String::from_utf8_lossy(&bytes);
-    let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
     let dir = path.parent().unwrap_or(Path::new("."));
     let mut m = match ext.as_str() {
+        "stl" => Mesh::from_stl(&bytes)?,
+        "ply" => Mesh::from_ply(&bytes)?,
         "obj" => Mesh::from_obj(&text, &|n| find_ci(dir, n).and_then(|p| std::fs::read(p).ok()).map(|b| String::from_utf8_lossy(&b).into_owned())),
         "dxf" => Mesh::from_dxf(&text),
         e => return Err(format!("formato de modelo não suportado: .{e}")),

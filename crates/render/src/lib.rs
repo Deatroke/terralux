@@ -2,6 +2,7 @@
 mod bvh;
 mod poly;
 mod sky;
+pub mod export;
 
 use glam::{Quat, Vec2, Vec3};
 use bvh::MeshBvh;
@@ -490,6 +491,11 @@ impl<'a> Renderer<'a> {
         let s = &self.scene.sky;
         let k = 0.5 + 0.5 * n.y;
         (s.horizon * 0.55 * (1.0 - k) + s.zenith * 0.9 * k) * 0.55 + Vec3::splat(0.02)
+    }
+
+    /// Cor do terreno no ponto (usada para pintar os vértices na exportação de malhas).
+    pub fn terrain_color_at(&self, p: Vec3, n: Vec3) -> Vec3 {
+        self.terrain_color(p, n)
     }
 
     fn terrain_color(&self, p: Vec3, n: Vec3) -> Vec3 {

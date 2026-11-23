@@ -126,6 +126,35 @@ impl App {
                         self.file_save(true);
                     }
                     ui.separator();
+                    if ui.button("Importar modelo 3D…   (glb, gltf, obj, stl, ply)").clicked() {
+                        ui.close();
+                        self.file_import_model();
+                    }
+                    ui.menu_button("Exportar", |ui| {
+                        if ui.button("Cena 3D (.glb) — Unity, Unreal, Godot, Blender").clicked() {
+                            ui.close();
+                            self.file_export_scene("glb");
+                        }
+                        if ui.button("Cena 3D (.obj + .mtl)").clicked() {
+                            ui.close();
+                            self.file_export_scene("obj");
+                        }
+                        if ui.button("Cena 3D (.stl) — impressão 3D").clicked() {
+                            ui.close();
+                            self.file_export_scene("stl");
+                        }
+                        ui.separator();
+                        let has_t = self.scene.terrain.is_some();
+                        if ui.add_enabled(has_t, egui::Button::new("Mapa de altura 16 bits (.png)")).clicked() {
+                            ui.close();
+                            self.file_export_heightmap(false);
+                        }
+                        if ui.add_enabled(has_t, egui::Button::new("Mapa de altura RAW 16 bits (.raw) — Unity/Unreal")).clicked() {
+                            ui.close();
+                            self.file_export_heightmap(true);
+                        }
+                    });
+                    ui.separator();
                     if ui.button("Renderizar imagem   F12").clicked() {
                         ui.close();
                         self.start_render(&ctx);

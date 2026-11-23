@@ -38,26 +38,23 @@ impl Heightfield {
     pub fn from_def(d: &TerrainDef) -> Self {
         let n = d.resolution.max(8);
         let cell = 2.0 * d.half_size / (n - 1) as f32;
-        let src = match &d.source {
+        let lum = match &d.source {
             TerrainSource::Procedural => None,
-            TerrainSource::Image(p) => match crate::assets::cached_image(p) {
-                Ok(img) => Some(img),
+            TerrainSource::Image(p) => match crate::heightmap::load_gray(p) {
+                Ok(g) => Some(g),
                 Err(e) => {
                     eprintln!("terreno por imagem: {e}");
                     None
                 }
             },
         };
-        let lum: Option<(usize, usize, Vec<f32>)> = src.as_ref().map(|im| {
-            let v = im.rgba.chunks_exact(4).map(|p| (0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32) / 255.0).collect();
-            (im.w, im.h, v)
-        });
         let flat_image = matches!(d.source, TerrainSource::Image(_)) && lum.is_none();
         let data: Vec<f32> = (0..n * n)
             .into_par_iter()
             .map(|i| {
                 let (ix, iz) = (i % n, i / n);
-                if let Some((w, h, v)) = &lum {
+                if let Some(g) = &lum {
+                    let (w, h, v) = (&g.0, &g.1, &g.2);
                     let l = catmull_sample(v, *w, *h, ix as f32 / (n - 1) as f32, iz as f32 / (n - 1) as f32);
                     return -d.sea_floor + l.clamp(0.0, 1.0) * (d.peak_height + d.sea_floor);
                 }

@@ -1,5 +1,7 @@
 //! Núcleo do Terralux: modelo de cena, ruído procedural e heightfield.
 pub mod assets;
+pub mod heightmap;
+pub mod import;
 pub mod mesh;
 pub mod sdf;
 pub mod noise;

@@ -380,6 +380,45 @@ impl App {
         }
     }
 
+    pub fn file_import_model(&mut self) {
+        let Some(p) = rfd::FileDialog::new().add_filter("Modelos 3D", &["glb", "gltf", "obj", "stl", "ply", "dxf"]).pick_file() else { return };
+        let spec = p.to_string_lossy().to_string();
+        match terralux_core::assets::load_mesh(&spec) {
+            Ok(m) => {
+                let name = p.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Modelo".into());
+                self.create_shape(Shape::Model(spec), &name, 5.0);
+                self.info(format!("Modelo importado: {} triângulos", m.tris.len()));
+            }
+            Err(e) => self.error(format!("Não foi possível importar o modelo: {e}")),
+        }
+    }
+
+    pub fn file_export_scene(&mut self, ext: &str) {
+        let Some(p) = rfd::FileDialog::new().add_filter(ext, &[ext]).set_file_name(format!("cena.{ext}")).save_file() else { return };
+        let o = terralux_render::export::ExportOptions { terrain_res: 513, include_water: true, ..Default::default() };
+        match terralux_render::export::export_scene(&self.scene, &p, &o) {
+            Ok(r) => {
+                let skip = if r.skipped.is_empty() { String::new() } else { format!(" ({} item(ns) ignorado(s))", r.skipped.len()) };
+                self.info(format!("Exportado {}: {} triângulos{skip}", p.display(), r.triangles));
+            }
+            Err(e) => self.error(format!("Falha ao exportar: {e}")),
+        }
+    }
+
+    pub fn file_export_heightmap(&mut self, raw: bool) {
+        let Some(def) = self.scene.terrain.clone() else { return };
+        let (ext, name) = if raw { ("raw", "terreno.raw") } else { ("png", "terreno.png") };
+        let Some(p) = rfd::FileDialog::new().add_filter(ext, &[ext]).set_file_name(name).save_file() else { return };
+        let hf = terralux_core::Heightfield::from_def(&def);
+        let n = 1025;
+        let hm = terralux_core::heightmap::Heightmap::from_heightfield(&hf, n);
+        let r = if raw { hm.write_raw16(&p) } else { hm.write_png16(&p) };
+        match r {
+            Ok(()) => self.info(format!("Mapa de altura {n}×{n} salvo. Altura do terreno na engine: {:.1} m, lado {:.0} m", hm.height_range(), hm.extent)),
+            Err(e) => self.error(format!("Falha ao exportar: {e}")),
+        }
+    }
+
     pub fn file_save(&mut self, as_new: bool) {
         let path = if as_new || self.path.is_none() {
             rfd::FileDialog::new().add_filter("Cena Terralux", &["ron"]).set_file_name("cena.ron").save_file()
