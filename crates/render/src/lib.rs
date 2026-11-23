@@ -150,6 +150,8 @@ pub struct Renderer<'a> {
     objs: Vec<Obj>,
     sun: Vec3,
     water_level: f32,
+    /// Modo de prévia: sem sombras, sem reflexos recursivos e sem raio de refração na água.
+    fast: bool,
 }
 
 fn rng_next(s: &mut u32) -> f32 {
@@ -204,7 +206,13 @@ impl<'a> Renderer<'a> {
             })
             .collect();
         let terrain_tex = scene.terrain.as_ref().and_then(|d| d.texture.as_ref()).and_then(|t| terralux_core::assets::cached_image(&t.path).ok().map(|i| (i, t.clone())));
-        Renderer { scene, hf, terrain_tex, objs, sun: scene.sun.direction(), water_level: scene.water.as_ref().map_or(f32::NEG_INFINITY, |w| w.level) }
+        Renderer { scene, hf, terrain_tex, objs, sun: scene.sun.direction(), water_level: scene.water.as_ref().map_or(f32::NEG_INFINITY, |w| w.level), fast: false }
+    }
+
+    /// Liga o modo rápido (prévia do editor): bem mais leve, com menos fidelidade.
+    pub fn fast(mut self, on: bool) -> Self {
+        self.fast = on;
+        self
     }
 
     /// Renderiza e devolve RGB linear (f32), linha a linha de cima para baixo.
@@ -517,7 +525,7 @@ impl<'a> Renderer<'a> {
     fn shade_surface(&self, albedo: Vec3, n: Vec3, p: Vec3, spec: f32, shin: f32, view: Vec3) -> Vec3 {
         let sun = &self.scene.sun;
         let ndl = n.dot(self.sun).max(0.0);
-        let lit = if ndl > 0.0 && !self.shadowed(p + n * 0.05) { ndl } else { 0.0 };
+        let lit = if ndl > 0.0 && (self.fast || !self.shadowed(p + n * 0.05)) { ndl } else { 0.0 };
         let sun_col = sun.color * sun.intensity;
         let h = (self.sun - view).normalize();
         let s = if lit > 0.0 { spec * n.dot(h).max(0.0).powf(shin) * lit } else { 0.0 };
@@ -526,7 +534,7 @@ impl<'a> Renderer<'a> {
 
     fn trace(&self, o: Vec3, d: Vec3, depth: u32, seed: &mut u32) -> Vec3 {
         match self.closest(o, d, true) {
-            None => sky::sky_color(self.scene, o, d, self.sun),
+            None => sky::sky_color(self.scene, o, d, self.sun, self.fast),
             Some(h) => {
                 let col = match h.kind {
                     Kind::Terrain => {
@@ -544,7 +552,7 @@ impl<'a> Renderer<'a> {
                         };
                         if depth < 3 && m.reflectivity > 0.0 {
                             let r = d - 2.0 * d.dot(h.n) * h.n;
-                            let rc = self.trace(h.p + h.n * 0.02, r, depth + 1, seed);
+                            let rc = if self.fast { sky::sky_color(self.scene, h.p, r, self.sun, true) } else { self.trace(h.p + h.n * 0.02, r, depth + 1, seed) };
                             base * (1.0 - m.reflectivity) + rc * m.color.lerp(Vec3::ONE, 0.25) * m.reflectivity
                         } else {
                             base
@@ -586,7 +594,13 @@ impl<'a> Renderer<'a> {
             r.y = 0.01;
             r = r.normalize();
         }
-        let refl = if depth < 3 { self.trace(h.p + Vec3::Y * 0.02, r, depth + 1, seed) } else { self.scene.sky.horizon };
+        let refl = if self.fast {
+            sky::sky_color(self.scene, h.p, r, self.sun, true)
+        } else if depth < 3 {
+            self.trace(h.p + Vec3::Y * 0.02, r, depth + 1, seed)
+        } else {
+            self.scene.sky.horizon
+        };
         // Brilho do sol na água (lóbulo especular).
         let sun = &self.scene.sun;
         let hv = (self.sun - d).normalize();
@@ -596,7 +610,15 @@ impl<'a> Renderer<'a> {
         let eta = 1.0 / 1.333;
         let k = 1.0 - eta * eta * (1.0 - cos_i * cos_i);
         let rd = (d * eta + n * (eta * cos_i - k.max(0.0).sqrt())).normalize();
-        let under = self.hit_terrain(h.p - Vec3::Y * 0.02, rd, 400.0);
+        let under = if self.fast {
+            // Prévia: só olha o fundo logo abaixo do ponto (sem marchar o raio refratado).
+            self.hf.as_ref().and_then(|hf| {
+                let depth_below = self.water_level - hf.height(h.p.x, h.p.z);
+                (depth_below > 0.0).then_some(depth_below / rd.y.abs().max(0.2))
+            })
+        } else {
+            self.hit_terrain(h.p - Vec3::Y * 0.02, rd, 400.0)
+        };
         let scatter = w.deep_color * (self.ambient(Vec3::Y) * 2.2 + Vec3::splat(0.5) * sun.color * (sun.intensity * 0.12));
         let refr = match under {
             Some(t) => {

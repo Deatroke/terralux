@@ -73,6 +73,8 @@ pub struct Args {
     pub help: bool,
     /// Teclas simuladas, uma por quadro (teste): "g,x,5,enter", "shift+d", "ctrl+z".
     pub keys: Vec<(Key, Modifiers)>,
+    /// --preview rapida|completa (teste; não grava).
+    pub preview: Option<String>,
 }
 
 /// "shift+d", "x", "5", "enter", "esc", "period", "minus", "ctrl+z"…
@@ -133,6 +135,7 @@ impl Args {
                 "--theme" => a.theme = it.next(),
                 "--theme-window" => a.theme_window = true,
                 "--help-window" => a.help = true,
+                "--preview" => a.preview = it.next(),
                 "--keys" => a.keys = it.next().map(|l| l.split(',').filter_map(parse_key).collect()).unwrap_or_default(),
                 other => a.scene = Some(other.into()),
             }
@@ -175,7 +178,9 @@ pub struct App {
     pub preview: Preview,
     pub tex: Option<egui::TextureHandle>,
     pub stage_info: String,
-    pub last_req: Option<(Scene, (usize, usize))>,
+    pub last_req: Option<(Scene, (usize, usize), bool)>,
+    /// Prévia leve (padrão) ou completa (sombras, reflexos e refração).
+    pub preview_fast: bool,
     pub req_id: u64,
     pub final_job: Option<FinalJob>,
     pub res_idx: usize,
@@ -251,6 +256,7 @@ impl App {
             tex: None,
             stage_info: String::new(),
             last_req: None,
+            preview_fast: true,
             req_id: 0,
             final_job: None,
             res_idx: 2,
@@ -286,6 +292,11 @@ impl App {
             frames: 0,
         };
         app.load_ui();
+        match args.preview.as_deref() {
+            Some("completa") => app.preview_fast = false,
+            Some("rapida") => app.preview_fast = true,
+            _ => {}
+        }
         match args.mode.as_deref() {
             Some("avancado") => app.simple = false,
             Some("simples") => app.simple = true,
@@ -833,7 +844,7 @@ impl App {
                 Some(t) => t.set(img, egui::TextureOptions::LINEAR),
                 None => self.tex = Some(ctx.load_texture("preview", img, egui::TextureOptions::LINEAR)),
             }
-            self.stage_info = format!("preview {}/{} · {} ms", r.stage + 1, Preview::stages(), r.ms);
+            self.stage_info = format!("prévia {} {}/{} · {} ms", if r.fast { "rápida" } else { "completa" }, r.stage + 1, Preview::stages(r.fast), r.ms);
         }
     }
 
@@ -850,6 +861,7 @@ impl App {
                     eprintln!("OBJ {} pos={:?} rot={:?} size={}", o.name, o.position, o.rotation_deg, o.size);
                 }
                 eprintln!("MODAL {}", self.modal.is_some());
+                eprintln!("STAGE {}", self.stage_info);
             }
             let (path, done) = (s.path.clone(), s.done.clone());
             ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::ScreenshotCallback::new(move |img| {

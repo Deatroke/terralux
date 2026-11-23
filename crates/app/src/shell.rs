@@ -412,6 +412,16 @@ impl App {
                 }
             }
         });
+        theme::section_title(ui, "Prévia");
+        ui.horizontal(|ui| {
+            for (fast, n, tx) in [(true, "Rápida", "Prévia leve: sem sombras nem reflexos. Ideal para mexer na cena."), (false, "Completa", "Prévia com sombras, reflexos e refração da água (mais lenta)")] {
+                let r = theme::small_button_w(ui, n, self.preview_fast == fast, 78.0);
+                if self.tip(r, tx).clicked() {
+                    self.preview_fast = fast;
+                    self.save_ui();
+                }
+            }
+        });
         if self.simple {
             return;
         }
@@ -594,6 +604,8 @@ impl App {
                     Some(("modo", "avancado")) => self.simple = false,
                     Some(("modo", "simples")) => self.simple = true,
                     Some(("guia", "0")) => self.welcome = false,
+                    Some(("previa", "completa")) => self.preview_fast = false,
+                    Some(("previa", "rapida")) => self.preview_fast = true,
                     _ => {}
                 }
             }
@@ -602,7 +614,7 @@ impl App {
 
     pub fn save_ui(&self) {
         let _ = std::fs::create_dir_all(assets::config_dir());
-        let t = format!("modo={}\nguia={}\n", if self.simple { "simples" } else { "avancado" }, if self.welcome { 1 } else { 0 });
+        let t = format!("modo={}\nguia={}\nprevia={}\n", if self.simple { "simples" } else { "avancado" }, if self.welcome { 1 } else { 0 }, if self.preview_fast { "rapida" } else { "completa" });
         let _ = std::fs::write(assets::config_dir().join("ui.txt"), t);
     }
 }

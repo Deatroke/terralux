@@ -51,12 +51,12 @@ impl App {
             let k = (MAX_PREVIEW_W / rect.width()).min(1.0);
             let (w, h) = ((rect.width() * k) as usize, (rect.height() * k) as usize);
             let need = match &self.last_req {
-                Some((s, (lw, lh))) => *s != self.scene || (*lw as i64 - w as i64).abs() > 2 || (*lh as i64 - h as i64).abs() > 2,
+                Some((s, (lw, lh), f)) => *f != self.preview_fast || *s != self.scene || (*lw as i64 - w as i64).abs() > 2 || (*lh as i64 - h as i64).abs() > 2,
                 None => true,
             };
             if need {
-                self.req_id = self.preview.request(self.scene.clone(), w, h);
-                self.last_req = Some((self.scene.clone(), (w, h)));
+                self.req_id = self.preview.request(self.scene.clone(), w, h, self.preview_fast);
+                self.last_req = Some((self.scene.clone(), (w, h), self.preview_fast));
             }
         }
         if self.display != Display::Wire {
@@ -169,8 +169,6 @@ impl App {
             self.draw_object_wire(&painter, &basis, i, true);
         }
         self.draw_gizmos(&painter, &basis, rect);
-        let busy = self.display != Display::Wire && self.stage_info.contains(&format!("{}/", crate::worker::Preview::stages() - 1)) ;
-        let _ = busy;
         painter.text(rect.right_top() + vec2(-10.0, 10.0), egui::Align2::RIGHT_TOP, &self.stage_info, egui::FontId::proportional(11.0), theme::pal().view_text);
         if self.editor != Editor::Work {
             return;

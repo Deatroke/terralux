@@ -23,7 +23,7 @@ fn cloud_density(s: &Scene, p: Vec2) -> f32 {
     ((v - thr) / 0.22).clamp(0.0, 1.0)
 }
 
-pub fn sky_color(s: &Scene, o: Vec3, d: Vec3, sun: Vec3) -> Vec3 {
+pub fn sky_color(s: &Scene, o: Vec3, d: Vec3, sun: Vec3, fast: bool) -> Vec3 {
     let up = d.y.max(0.0);
     let k = up.powf(0.45);
     let mut col = s.sky.horizon.lerp(s.sky.zenith, k);
@@ -40,7 +40,7 @@ pub fn sky_color(s: &Scene, o: Vec3, d: Vec3, sun: Vec3) -> Vec3 {
             if dens > 0.0 {
                 // Sombreamento: olha a densidade na direção do sol para o auto-sombreamento.
                 let sxz = Vec2::new(sun.x, sun.z).normalize_or_zero() * 90.0;
-                let dl = cloud_density(s, p + sxz);
+                let dl = if fast { dens } else { cloud_density(s, p + sxz) };
                 let shade = (1.0 - (dl - dens * 0.6).max(0.0) * 1.1).clamp(0.2, 1.0);
                 let lit = s.sun.color * (s.sun.intensity * 0.30) * shade + s.sky.zenith * 0.35 + Vec3::splat(0.25);
                 let ccol = lit.lerp(s.sky.horizon, (1.0 - d.y).powf(3.0) * 0.5);

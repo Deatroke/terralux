@@ -10,15 +10,20 @@ use terralux_render::{tonemap_to_srgb8, RenderOptions, Renderer};
 pub const PREVIEW_TERRAIN_RES: usize = 512;
 /// (divisor da resolução, amostras por pixel) de cada estágio do preview.
 const STAGES: [(usize, usize); 4] = [(8, 1), (4, 1), (2, 2), (1, 4)];
+/// Prévia rápida: poucos estágios e sem sombras/reflexos (ver `Renderer::fast`).
+const STAGES_FAST: [(usize, usize); 3] = [(4, 1), (2, 1), (1, 1)];
+pub const FAST_TERRAIN_RES: usize = 256;
 
 pub struct PreviewReq {
     pub id: u64,
     pub scene: Scene,
     pub w: usize,
     pub h: usize,
+    pub fast: bool,
 }
 
 pub struct PreviewResp {
+    pub fast: bool,
     pub id: u64,
     pub w: usize,
     pub h: usize,
@@ -51,7 +56,7 @@ impl Preview {
                 }
                 let mut sc = req.scene;
                 let hf = sc.terrain.as_mut().map(|t| {
-                    t.resolution = t.resolution.min(PREVIEW_TERRAIN_RES);
+                    t.resolution = t.resolution.min(if req.fast { FAST_TERRAIN_RES } else { PREVIEW_TERRAIN_RES });
                     let key = format!("{:?}", t);
                     match &cache {
                         Some((k, h)) if *k == key => h.clone(),
@@ -62,8 +67,9 @@ impl Preview {
                         }
                     }
                 });
-                let r = Renderer::with_heightfield(&sc, hf);
-                for (i, (div, spp)) in STAGES.iter().enumerate() {
+                let r = Renderer::with_heightfield(&sc, hf).fast(req.fast);
+                let stages: &[(usize, usize)] = if req.fast { &STAGES_FAST } else { &STAGES };
+                for (i, (div, spp)) in stages.iter().enumerate() {
                     let (w, h) = ((req.w / div).max(16), (req.h / div).max(16));
                     let mut o = RenderOptions::new(w, h, *spp);
                     o.cancel = Some((lat.clone(), req.id));
@@ -73,7 +79,7 @@ impl Preview {
                         break;
                     }
                     let rgb = tonemap_to_srgb8(&img);
-                    let _ = tx_resp.send(PreviewResp { id: req.id, w, h, rgb, stage: i, ms: t0.elapsed().as_millis() });
+                    let _ = tx_resp.send(PreviewResp { fast: req.fast, id: req.id, w, h, rgb, stage: i, ms: t0.elapsed().as_millis() });
                     ctx.request_repaint();
                 }
             }
@@ -81,15 +87,15 @@ impl Preview {
         Preview { tx, rx, latest, next_id: 0 }
     }
 
-    pub fn request(&mut self, scene: Scene, w: usize, h: usize) -> u64 {
+    pub fn request(&mut self, scene: Scene, w: usize, h: usize, fast: bool) -> u64 {
         self.next_id += 1;
         self.latest.store(self.next_id, Ordering::Relaxed);
-        let _ = self.tx.send(PreviewReq { id: self.next_id, scene, w, h });
+        let _ = self.tx.send(PreviewReq { id: self.next_id, scene, w, h, fast });
         self.next_id
     }
 
-    pub fn stages() -> usize {
-        STAGES.len()
+    pub fn stages(fast: bool) -> usize {
+        if fast { STAGES_FAST.len() } else { STAGES.len() }
     }
 }
 
