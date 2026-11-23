@@ -73,7 +73,7 @@ Um caminho errado lista os campos disponíveis na mensagem de erro. Para ver a e
 
 ### Unity
 - `export-terrain --size 1025` (ou 513, 2049, 4097) e importe como RAW: *Depth 16 bit, Byte Order Windows*. Use `extent_m` como largura/comprimento e `terrain_height_m` como altura (vêm no JSON).
-- A Unity é canhota: o relevo chega espelhado em x. Para o GLB, a importação já corrige.
+- A Unity é canhota: o relevo chega espelhado em x. Para a malha, prefira o GLB (Y para cima, destro, em metros).
 
 ## Smoke test
 
