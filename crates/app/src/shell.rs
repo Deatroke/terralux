@@ -93,18 +93,30 @@ impl App {
         theme::sheen_after(egui::Panel::top("menu").frame(theme::panel_frame().inner_margin(Margin::symmetric(8, 3))).show(ui, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("Arquivo", |ui| {
-                    if ui.button("Nova cena (vazia)   Ctrl+N").clicked() {
-                        self.load_scene(Scene::empty(), None);
-                        ui.close();
-                    }
-                    if ui.button("Nova cena de exemplo (ilha)").clicked() {
-                        self.load_scene(Scene::demo(), None);
+                    if ui.button("Novo / modelos…   Ctrl+N").clicked() {
+                        self.open_start(true);
                         ui.close();
                     }
                     if ui.button("Abrir…   Ctrl+O").clicked() {
                         ui.close();
                         self.file_open();
                     }
+                    ui.menu_button("Abrir recente", |ui| {
+                        if self.home.recent.is_empty() {
+                            ui.label("(nenhum ainda)");
+                        }
+                        let mut go = None;
+                        for p in &self.home.recent {
+                            let n = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                            if ui.button(n).on_hover_text(p.display().to_string()).clicked() {
+                                go = Some(p.clone());
+                            }
+                        }
+                        if let Some(p) = go {
+                            ui.close();
+                            self.open_path(&p);
+                        }
+                    });
                     if ui.button("Salvar   Ctrl+S").clicked() {
                         ui.close();
                         self.file_save(false);

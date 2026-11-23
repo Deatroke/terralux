@@ -1,6 +1,7 @@
 #![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
 mod aero;
 mod keymap;
+mod start;
 mod app;
 mod icons;
 mod inspector;

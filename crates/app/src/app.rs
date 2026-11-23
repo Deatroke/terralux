@@ -39,6 +39,8 @@ pub enum Display {
 pub enum Editor {
     Work,
     Terrain,
+    /// Tela inicial (modelos e projetos recentes).
+    Start,
 }
 
 pub const RESOLUTIONS: [(&str, usize, usize); 5] = [
@@ -55,6 +57,8 @@ pub struct Args {
     pub scene: Option<PathBuf>,
     pub shot: Option<(PathBuf, f32)>,
     pub terrain: bool,
+    /// Força a tela inicial (por padrão ela só abre sem cena e sem --screenshot).
+    pub start: bool,
     pub display: Option<String>,
     pub render: bool,
     pub select: Option<String>,
@@ -119,6 +123,7 @@ impl Args {
                     a.shot = Some((p.into(), secs));
                 }
                 "--terrain" => a.terrain = true,
+                "--start" => a.start = true,
                 "--render" => a.render = true,
                 "--display" => a.display = it.next(),
                 "--select" => a.select = it.next(),
@@ -199,6 +204,7 @@ pub struct App {
     pub palette: Palette,
     pub drawer: bool,
     pub welcome: bool,
+    pub home: crate::start::StartState,
     pub theme_open: bool,
     pub rendered_once: bool,
     pub view_rect: egui::Rect,
@@ -275,6 +281,7 @@ impl App {
             palette: args.palette.as_deref().and_then(Palette::from_key).unwrap_or(Palette::Criar),
             drawer: args.library.is_some(),
             welcome: true,
+            home: Default::default(),
             theme_open: args.theme_window,
             rendered_once: false,
             view_rect: egui::Rect::NOTHING,
@@ -292,6 +299,13 @@ impl App {
             frames: 0,
         };
         app.load_ui();
+        app.home.recent = crate::start::load_recent();
+        if let Some(p) = app.path.clone() {
+            app.note_recent(&p);
+        }
+        if args.start || (args.scene.is_none() && app.shot.is_none() && !args.terrain && !args.render) {
+            app.open_start(false);
+        }
         match args.preview.as_deref() {
             Some("completa") => app.preview_fast = false,
             Some("rapida") => app.preview_fast = true,
@@ -351,12 +365,16 @@ impl App {
         self.redo.clear();
         self.sel = Sel::Sky;
         self.last_req = None;
+        self.editor = Editor::Work;
     }
 
     pub fn file_open(&mut self) {
         if let Some(p) = rfd::FileDialog::new().add_filter("Cena Terralux", &["ron"]).pick_file() {
             match std::fs::read_to_string(&p).map_err(|e| e.to_string()).and_then(|t| Scene::from_ron(&t).map_err(|e| e.to_string())) {
-                Ok(s) => self.load_scene(s, Some(p)),
+                Ok(s) => {
+                    self.load_scene(s, Some(p.clone()));
+                    self.note_recent(&p);
+                }
                 Err(e) => self.error(format!("Não foi possível abrir a cena: {e}")),
             }
         }
@@ -373,6 +391,7 @@ impl App {
                 Ok(()) => {
                     self.saved = self.scene.clone();
                     self.info(format!("Cena salva em {}", p.display()));
+                    self.note_recent(&p);
                     self.path = Some(p);
                 }
                 Err(e) => self.error(format!("Não foi possível salvar a cena: {e}")),
@@ -633,7 +652,7 @@ impl App {
                 }
             }
             Action::Render => self.start_render(ctx),
-            Action::New => self.load_scene(Scene::empty(), None),
+            Action::New => self.open_start(true),
             Action::Open => self.file_open(),
             Action::Save => self.file_save(false),
             Action::SaveAs => self.file_save(true),
@@ -921,6 +940,7 @@ impl eframe::App for App {
                 theme::bevel(ui.painter(), self.view_rect.expand(2.0), false, egui::Color32::TRANSPARENT);
             }
             Editor::Terrain => self.terrain_editor(ui),
+            Editor::Start => self.start_ui(ui),
         });
         if self.editor == Editor::Work {
             self.viewport_overlays(&ctx, self.view_rect);
